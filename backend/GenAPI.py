@@ -54,88 +54,102 @@ def options_stream_handler():
 # =========================
 # NORMAL RESPONSE (OLD WAY)
 # =========================
+# @app.post("/ask")
+# def ask_question(model: Model):
+#     try:
+#         # Step 1: create memory if not exists
+#         if model.user_id not in user_memory:
+#             user_memory[model.user_id] = []
+
+#         # Step 2: add user message
+#         user_memory[model.user_id].append(f"User: {model.question}")
+
+#         # Step 3: build full prompt
+#         full_prompt = "\n".join(user_memory[model.user_id])
+
+#         # Step 4: call Ollama
+#         response = requests.post(
+#             "http://localhost:11434/api/generate",
+#             json={
+#                 "model": "llama3",
+#                 "prompt": full_prompt,
+#                 "stream": False
+#             }
+#         )
+
+#         data = response.json()
+#         answer = data.get("response", "No response")
+
+#         # Step 5: store assistant reply
+#         user_memory[model.user_id].append(f"Assistant: {answer}")
+
+#         return {"ans": answer}
+
+#     except Exception as e:
+#         return {"error": str(e)}
+
 @app.post("/ask")
 def ask_question(model: Model):
-    try:
-        # Step 1: create memory if not exists
-        if model.user_id not in user_memory:
-            user_memory[model.user_id] = []
-
-        # Step 2: add user message
-        user_memory[model.user_id].append(f"User: {model.question}")
-
-        # Step 3: build full prompt
-        full_prompt = "\n".join(user_memory[model.user_id])
-
-        # Step 4: call Ollama
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3",
-                "prompt": full_prompt,
-                "stream": False
-            }
-        )
-
-        data = response.json()
-        answer = data.get("response", "No response")
-
-        # Step 5: store assistant reply
-        user_memory[model.user_id].append(f"Assistant: {answer}")
-
-        return {"ans": answer}
-
-    except Exception as e:
-        return {"error": str(e)}
-
+    return {"ans": "Backend is live 🚀"}
 # =========================
 # STREAMING RESPONSE (NEW)
 # =========================
+# @app.post("/stream")
+# def stream_answer(model: Model):
+
+#     # Step 1: create memory
+#     if model.user_id not in user_memory:
+#         user_memory[model.user_id] = []
+
+#     # Step 2: store user message
+#     user_memory[model.user_id].append(f"User: {model.question}")
+
+#     # Step 3: build prompt
+#     full_prompt = "\n".join(user_memory[model.user_id])
+
+#     # Step 4: generator function (VERY IMPORTANT)
+#     def generate():
+
+#         response = requests.post(
+#             "http://localhost:11434/api/generate",
+#             json={
+#                 "model": "llama3",
+#                 "prompt": full_prompt,
+#                 "stream": True   # 🔥 ENABLE STREAMING
+#             },
+#             stream=True
+#         )
+
+#         full_answer = ""
+
+#         # Step 5: read streaming chunks
+#         for line in response.iter_lines():
+#             if line:
+#                 try:
+#                     data = json.loads(line.decode("utf-8"))
+#                     token = data.get("response", "")
+
+#                     full_answer += token
+
+#                     # 🔥 THIS SENDS DATA TO FRONTEND LIVE
+#                     yield token
+
+#                 except:
+#                     continue
+
+#         # Step 6: save final response
+#         user_memory[model.user_id].append(f"Assistant: {full_answer}")
+
+#     # Step 7: return streaming response
+#     return StreamingResponse(generate(), media_type="text/plain")
+
 @app.post("/stream")
 def stream_answer(model: Model):
 
-    # Step 1: create memory
-    if model.user_id not in user_memory:
-        user_memory[model.user_id] = []
-
-    # Step 2: store user message
-    user_memory[model.user_id].append(f"User: {model.question}")
-
-    # Step 3: build prompt
-    full_prompt = "\n".join(user_memory[model.user_id])
-
-    # Step 4: generator function (VERY IMPORTANT)
     def generate():
+        text = "Backend streaming is live 🚀"
 
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3",
-                "prompt": full_prompt,
-                "stream": True   # 🔥 ENABLE STREAMING
-            },
-            stream=True
-        )
+        for char in text:
+            yield char
 
-        full_answer = ""
-
-        # Step 5: read streaming chunks
-        for line in response.iter_lines():
-            if line:
-                try:
-                    data = json.loads(line.decode("utf-8"))
-                    token = data.get("response", "")
-
-                    full_answer += token
-
-                    # 🔥 THIS SENDS DATA TO FRONTEND LIVE
-                    yield token
-
-                except:
-                    continue
-
-        # Step 6: save final response
-        user_memory[model.user_id].append(f"Assistant: {full_answer}")
-
-    # Step 7: return streaming response
     return StreamingResponse(generate(), media_type="text/plain")
