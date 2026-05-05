@@ -8,8 +8,11 @@ import json
 # =========================
 # APP INIT
 # =========================
-app = FastAPI()
-
+app = FastAPI(
+    title="GenAI Tutor API",
+    docs_url="/docs",        # Swagger UI
+    redoc_url="/redoc"       # optional
+)
 # =========================
 # CORS (VERY IMPORTANT)
 # =========================
@@ -153,3 +156,6 @@ def stream_answer(model: Model):
             yield char
 
     return StreamingResponse(generate(), media_type="text/plain")
+
+
+#df
