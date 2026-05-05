@@ -9,10 +9,10 @@ import json
 # =========================
 app = FastAPI(
     title="GenAI Tutor API",
-    docs_url="/docs",        # Swagger
-    redoc_url="/redoc"
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json"
 )
-
 # =========================
 # CORS (Frontend access)
 # =========================
@@ -61,43 +61,18 @@ def options_stream():
 # =========================
 # CHAT (NON-STREAM)
 # =========================
+@app.get("/api/")
+def home():
+    return {"message": "GenAI API running"}
+
 @app.post("/api/ask")
 def ask_question(model: Model):
-    try:
-        if model.user_id not in user_memory:
-            user_memory[model.user_id] = []
+    return {"ans": "Backend is live 🚀"}
 
-        user_memory[model.user_id].append(f"User: {model.question}")
-
-        # TEMP RESPONSE
-        answer = "Backend is live 🚀"
-
-        user_memory[model.user_id].append(f"Assistant: {answer}")
-
-        return {"ans": answer}
-
-    except Exception as e:
-        return {"error": str(e)}
-
-# =========================
-# STREAMING CHAT
-# =========================
 @app.post("/api/stream")
 def stream_answer(model: Model):
-
     def generate():
         text = "Backend streaming is live 🚀"
-        full = ""
-
         for char in text:
-            full += char
             yield char
-
-        # store after complete
-        if model.user_id not in user_memory:
-            user_memory[model.user_id] = []
-
-        user_memory[model.user_id].append(f"User: {model.question}")
-        user_memory[model.user_id].append(f"Assistant: {full}")
-
     return StreamingResponse(generate(), media_type="text/plain")
