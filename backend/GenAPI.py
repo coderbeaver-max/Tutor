@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import json
 
 # =========================
@@ -9,23 +9,23 @@ import json
 # =========================
 app = FastAPI(
     title="GenAI Tutor API",
-    docs_url="/docs",
+    docs_url="/docs",        # Swagger
     redoc_url="/redoc"
 )
 
 # =========================
-# CORS
+# CORS (Frontend access)
 # =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, restrict this
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # =========================
-# MEMORY
+# MEMORY (simple in-memory)
 # =========================
 user_memory = {}
 
@@ -37,39 +37,67 @@ class Model(BaseModel):
     question: str
 
 # =========================
-# HEALTH CHECK (DO NOT USE "/" FOR UI)
+# HEALTH CHECK
 # =========================
-@app.get("/api")
+@app.get("/")
+def root():
+    return {"status": "Backend running 🚀"}
+
+@app.get("/api/health")
 def health():
-    return {"message": "GenAI API running"}
+    return {"message": "API healthy ✅"}
 
 # =========================
-# CORS PREFLIGHT
+# PREFLIGHT (CORS)
 # =========================
 @app.options("/api/ask")
-def options_handler():
+def options_ask():
     return Response(status_code=200)
 
 @app.options("/api/stream")
-def options_stream_handler():
+def options_stream():
     return Response(status_code=200)
 
 # =========================
-# NORMAL RESPONSE
+# CHAT (NON-STREAM)
 # =========================
 @app.post("/api/ask")
 def ask_question(model: Model):
-    return {"ans": "Backend is live 🚀"}
+    try:
+        if model.user_id not in user_memory:
+            user_memory[model.user_id] = []
+
+        user_memory[model.user_id].append(f"User: {model.question}")
+
+        # TEMP RESPONSE
+        answer = "Backend is live 🚀"
+
+        user_memory[model.user_id].append(f"Assistant: {answer}")
+
+        return {"ans": answer}
+
+    except Exception as e:
+        return {"error": str(e)}
 
 # =========================
-# STREAMING RESPONSE
+# STREAMING CHAT
 # =========================
 @app.post("/api/stream")
 def stream_answer(model: Model):
 
     def generate():
         text = "Backend streaming is live 🚀"
+        full = ""
+
         for char in text:
+            full += char
             yield char
+
+        # store after complete
+        if model.user_id not in user_memory:
+            user_memory[model.user_id] = []
+
+        user_memory[model.user_id].append(f"User: {model.question}")
+        user_memory[model.user_id].append(f"Assistant: {full}")
 
     return StreamingResponse(generate(), media_type="text/plain")
