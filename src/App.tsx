@@ -1,163 +1,277 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 
+import "./App.css";
+
+// =========================
+// TYPES
+// =========================
 type Message = {
-  role: string;
+  role: "user" | "ai";
   text: string;
 };
 
-export default function App() {
-  const [question, setQuestion] = useState("");
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+    SpeechRecognition: any;
+  }
+}
+
+function App() {
+
+  // =========================
+  // STATES
+  // =========================
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isListening, setIsListening] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const [listening, setListening] = useState(false);
 
   const recognitionRef = useRef<any>(null);
 
   // =========================
-  // 🔥 USER ID
+  // SPEAK AI RESPONSE
   // =========================
-  const [userId] = useState(() => {
-    const existing = localStorage.getItem("user_id");
-    if (existing) return existing;
+  const speakText = (text: string) => {
 
-    const id = "user_" + Math.random().toString(36).substring(2, 9);
-    localStorage.setItem("user_id", id);
-    return id;
-  });
+    const speech = new SpeechSynthesisUtterance(text);
+
+    speech.lang = "en-US";
+    speech.rate = 1;
+    speech.pitch = 1;
+
+    window.speechSynthesis.speak(speech);
+  };
 
   // =========================
-  // 🔥 STREAMING FUNCTION (COMMON)
+  // ASK AI
   // =========================
-  const sendStreaming = async (inputText: string) => {
-    if (!inputText.trim()) return;
+  const askAI = async () => {
 
-    // Add user message
-    setMessages(prev => [...prev, { role: "User", text: inputText }]);
+    if (!question.trim()) return;
 
-    // Add empty assistant message
-    setMessages(prev => [...prev, { role: "Assistant", text: "" }]);
+    // USER MESSAGE
+    const userMessage: Message = {
+      role: "user",
+      text: question
+    };
 
-    const res = await fetch("http://localhost:8000/stream", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        question: inputText
-      })
-    });
+    setMessages((prev) => [...prev, userMessage]);
 
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder();
+    const currentQuestion = question;
 
-    let result = "";
+    setQuestion("");
 
-    while (true) {
-      const { done, value } = await reader!.read();
-      if (done) break;
+    try {
 
-      const chunk = decoder.decode(value);
-      result += chunk;
+      setLoading(true);
 
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1].text = result;
-        return updated;
-      });
+      // =========================
+      // API CALL
+      // =========================
+      const res = await axios.post(
+        "https://backend-production-4b6a.up.railway.app/api/ask",
+        {
+          user_id: "buddy",
+          question: currentQuestion,
+          model: "gemini-2.5-flash"
+        }
+      );
+
+      const aiText = res.data.response;
+
+      // AI MESSAGE
+      const aiMessage: Message = {
+        role: "ai",
+        text: aiText
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+
+      // =========================
+      // AI SPEAKS RESPONSE
+      // =========================
+      speakText(aiText);
+
+    } catch (error) {
+
+      console.log(error);
+
+      const errorMessage: Message = {
+        role: "ai",
+        text: "Error talking to AI"
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+
+    } finally {
+
+      setLoading(false);
+
+    }
+  };
+
+  // =========================
+  // START VOICE INPUT
+  // =========================
+  const startListening = () => {
+
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+
+      alert("Speech Recognition not supported");
+
+      return;
     }
 
-    // 🔊 SPEAK FULL RESPONSE
-    const speech = new SpeechSynthesisUtterance(result);
+    const recognition = new SpeechRecognition();
 
-    speech.onend = () => {
-      // restart listening only if voice mode is ON
-      if (isListening && recognitionRef.current) {
-        recognitionRef.current.start();
-      }
-    };
-
-    speechSynthesis.speak(speech);
-  };
-
-  // =========================
-  // 🧠 CHAT SEND (DEBUG MODE)
-  // =========================
-  const sendChat = () => {
-    sendStreaming(question);
-    setQuestion("");
-  };
-
-  // =========================
-  // 🎤 VOICE LOOP
-  // =========================
-  const startVoiceLoop = () => {
-    const recognition = new (window as any).webkitSpeechRecognition();
-
-    recognition.continuous = false;
     recognition.lang = "en-US";
 
+    recognition.continuous = false;
+
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+
+      setListening(true);
+    };
+
+    recognition.onend = () => {
+
+      setListening(false);
+    };
+
     recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
 
-      recognition.stop(); // stop while processing
+      const transcript =
+        event.results[0][0].transcript;
 
-      sendStreaming(text);
+      setQuestion(transcript);
     };
-
-    recognition.onerror = () => {
-      if (isListening) {
-        recognition.start();
-      }
-    };
-
-    recognitionRef.current = recognition;
-    setIsListening(true);
 
     recognition.start();
+
+    recognitionRef.current = recognition;
   };
 
   // =========================
-  // 🛑 STOP VOICE LOOP
+  // ENTER KEY SUPPORT
   // =========================
-  const stopVoiceLoop = () => {
-    setIsListening(false);
-    recognitionRef.current?.stop();
-    speechSynthesis.cancel();
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>
+  ) => {
+
+    if (e.key === "Enter" && !e.shiftKey) {
+
+      e.preventDefault();
+
+      askAI();
+    }
   };
+
+  // =========================
+  // AUTO SCROLL
+  // =========================
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+
+    chatEndRef.current?.scrollIntoView({
+      behavior: "smooth"
+    });
+
+  }, [messages]);
 
   return (
-    <div style={{ width: 500, margin: "auto", marginTop: 50 }}>
-      <h2>🎤 Voice + Chat AI Tutor</h2>
+    <div className="app">
 
-      <div style={{
-        border: "1px solid #ccc",
-        height: 300,
-        overflowY: "auto",
-        padding: 10,
-        background: "#fff"
-      }}>
-        {messages.map((msg, i) => (
-          <div key={i}>
-            <b>{msg.role}:</b> {msg.text}
+      {/* ========================= */}
+      {/* JARVIS ORB */}
+      {/* ========================= */}
+      <div className={loading ? "orb active" : "orb"} />
+
+      <div className="container">
+
+        <h1>JARVIS AI Tutor</h1>
+
+        {/* ========================= */}
+        {/* CHAT BOX */}
+        {/* ========================= */}
+        <div className="chat-box">
+
+          {
+            messages.map((msg, index) => (
+
+              <div
+                key={index}
+                className={
+                  msg.role === "user"
+                    ? "message user"
+                    : "message ai"
+                }
+              >
+                {msg.text}
+              </div>
+            ))
+          }
+
+          {
+            loading && (
+              <div className="message ai">
+                Thinking...
+              </div>
+            )
+          }
+
+          <div ref={chatEndRef}></div>
+
+        </div>
+
+        {/* ========================= */}
+        {/* INPUT AREA */}
+        {/* ========================= */}
+        <div className="input-area">
+
+          <textarea
+            placeholder="Ask Jarvis..."
+            value={question}
+            onChange={(e) =>
+              setQuestion(e.target.value)
+            }
+            onKeyDown={handleKeyDown}
+          />
+
+          <div className="buttons">
+
+            <button onClick={askAI}>
+              Send
+            </button>
+
+            <button
+              className={
+                listening
+                  ? "mic listening"
+                  : "mic"
+              }
+              onClick={startListening}
+            >
+              🎤
+            </button>
+
           </div>
-        ))}
+
+        </div>
+
       </div>
 
-      {/* 🔥 CHAT INPUT (DEBUG / FALLBACK) */}
-      <input
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder="Type (debug mode)..."
-        style={{ width: "60%", marginTop: 10 }}
-      />
-
-      <button onClick={sendChat}>Send</button>
-
-      {/* 🔥 VOICE CONTROLS */}
-      <div style={{ marginTop: 10 }}>
-        <button onClick={startVoiceLoop}>▶ Start Voice</button>
-        <button onClick={stopVoiceLoop}>⏹ Stop</button>
-      </div>
     </div>
   );
 }
+
+export default App;
