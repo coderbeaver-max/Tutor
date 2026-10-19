@@ -1,20 +1,51 @@
-import axios from "axios";
 
-const API_URL = "http://127.0.0.1:8000";
+const LOCAL_API_URL = "http://127.0.0.1:8000";
+
+function getApiBaseUrl(): string {
+    const configuredUrl = import.meta.env.VITE_API_BASE_URL;
+
+    // Use localhost as the development fallback only.
+    // Production must have its API URL explicitly configured.
+    const apiUrl =
+        configuredUrl ||
+        (import.meta.env.DEV ? LOCAL_API_URL : "");
+
+    if (!apiUrl) {
+        throw new Error(
+            "VITE_API_BASE_URL is missing. Configure it in Vercel Environment Variables."
+        );
+    }
+
+    return apiUrl.replace(/\/+$/, "");
+}
 
 export async function askQuestion(
     userId: string,
     question: string
 ) {
-    const response = await axios.post(
-        `${API_URL}/api/ask`,
+    const response = await fetch(
+        `${getApiBaseUrl()}/api/ask`,
         {
-            user_id: userId,
-            question: question
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                question,
+            }),
         }
     );
 
-    return response.data;
+    if (!response.ok) {
+        const errorBody = await response.text();
+
+        throw new Error(
+            `Ask API failed (${response.status}): ${errorBody}`
+        );
+    }
+
+    return response.json();
 }
 
 export async function streamQuestion(
@@ -23,43 +54,53 @@ export async function streamQuestion(
     onChunk: (chunk: string) => void
 ) {
     const response = await fetch(
-        `${API_URL}/api/stream`,
+        `${getApiBaseUrl()}/api/stream`,
         {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             },
             body: JSON.stringify({
                 user_id: userId,
-                question: question
-            })
+                question,
+            }),
         }
     );
 
     if (!response.ok) {
-        throw new Error("Streaming request failed");
+        throw new Error(
+            `Streaming request failed: ${response.status} ${response.statusText}`
+        );
     }
 
     if (!response.body) {
-        throw new Error("Streaming response body is unavailable");
+        throw new Error(
+            "Streaming response body is unavailable."
+        );
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
-    while (true) {
-        const { done, value } = await reader.read();
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
 
-        if (done) {
-            break;
+            if (done) {
+                break;
+            }
+
+            onChunk(
+                decoder.decode(value, { stream: true })
+            );
         }
 
-        const chunk = decoder.decode(value, {
-            stream: true
-        });
+        const remaining = decoder.decode();
 
-        if (chunk) {
-            onChunk(chunk);
+        if (remaining) {
+            onChunk(remaining);
         }
+    } finally {
+        reader.releaseLock();
     }
 }
